@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 const (
@@ -38,7 +40,16 @@ func (c *CLI) Execute(args []string) int {
 		return ExitCodeParseFlagError
 	}
 
-	fmt.Println(tURL)
+	return run(tURL)
+}
+
+func run(tURL string) int {
+	doc, err := goquery.NewDocument(tURL)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(doc)
 
 	return 0
 }
