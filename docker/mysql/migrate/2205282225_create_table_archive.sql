@@ -1,4 +1,4 @@
-CREATE TABLE retrieved_article
+CREATE TABLE archive
 (
     id int auto_increment PRIMARY KEY,
     crawler_site_id int not null,
