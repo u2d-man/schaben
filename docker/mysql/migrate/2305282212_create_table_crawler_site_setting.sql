@@ -2,6 +2,8 @@ CREATE TABLE crawler_site_setting
 (
     id int auto_increment PRIMARY KEY,
     crawler_site_id int not null,
+    block varchar(100) not null,
+    article_link_from_block varchar(100) not null,
     title varchar(100) not null,
     body varchar(100) not null,
     article_update_date varchar(100) not null,
