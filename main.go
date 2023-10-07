@@ -84,9 +84,16 @@ func (c *CLI) execute() int {
 		return ExitCodeFail
 	}
 
-	resp, err := http.Get(crawlerSite[0].URL)
+	resp, err := http.Get(crawlerSite[1].URL)
 	if err != nil {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
+		return ExitCodeFail
+	}
+
+	statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
+	if !statusOK {
+		_, _ = fmt.Println("Non-OK HTTP status:", resp.StatusCode)
+		fmt.Println(resp)
 		return ExitCodeFail
 	}
 
@@ -103,15 +110,15 @@ func (c *CLI) execute() int {
 		return ExitCodeFail
 	}
 
-	doc.Find(crawlerSite[0].Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
-		s.Find(crawlerSite[0].ArticleLinkFromBlock).EachWithBreak(func(i int, s *goquery.Selection) bool {
+	fmt.Println("get doc")
+
+	doc.Find(crawlerSite[1].Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
+		s.Find(crawlerSite[1].ArticleLinkFromBlock).EachWithBreak(func(i int, s *goquery.Selection) bool {
 			aURL, exists := s.Attr("href")
 			if exists != true {
 				fmt.Println("not found href.")
 				return false
 			}
-
-			fmt.Println(aURL)
 
 			return true
 		})
