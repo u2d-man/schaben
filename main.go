@@ -33,6 +33,10 @@ type CrawlerSite struct {
 	ArticleUpdatedAt     string `db:"article_updated_at"`
 }
 
+type URLsRetrievedByCrawler struct {
+	URL []string
+}
+
 func getEnv(key string, defaultValue string) string {
 	if val, ok := os.LookupEnv(key); ok {
 		return val
@@ -112,6 +116,8 @@ func (c *CLI) execute() int {
 
 	fmt.Println("get doc")
 
+	var URLsRetrievedByCrawler URLsRetrievedByCrawler
+
 	doc.Find(crawlerSite[1].Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
 		s.Find(crawlerSite[1].ArticleLinkFromBlock).EachWithBreak(func(i int, s *goquery.Selection) bool {
 			aURL, exists := s.Attr("href")
@@ -120,11 +126,19 @@ func (c *CLI) execute() int {
 				return false
 			}
 
+			_, err = db.Exec("INSERT INTO `article_url` (`url`) VALUES (?)", aURL)
+			if err != nil {
+				fmt.Println(err)
+				return false
+			}
+
 			return true
 		})
 
 		return true
 	})
+
+	fmt.Println(URLsRetrievedByCrawler.URL)
 
 	return ExitCodeOK
 }
