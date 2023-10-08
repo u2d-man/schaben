@@ -120,7 +120,8 @@ func (c *CLI) execute() int {
 	}
 
 	fmt.Println("get doc")
-	
+
+	// pickup article urls
 	doc.Find(crawlerSite[1].Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
 		s.Find(crawlerSite[1].ArticleLinkFromBlock).EachWithBreak(func(i int, s *goquery.Selection) bool {
 			aURL, exists := s.Attr("href")
