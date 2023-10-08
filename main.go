@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/UserKazun/schaben/util"
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -102,7 +102,7 @@ func (c *CLI) execute() int {
 		return ExitCodeFail
 	}
 
-	resp, err := requestSite(crawlerSite[1].URL)
+	resp, err := util.GetRequest(crawlerSite[1].URL)
 
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
@@ -162,7 +162,7 @@ func (c *CLI) execute() int {
 	}
 
 	for _, articleURL := range articleURLs {
-		resp, err = requestSite(articleURL.URL)
+		resp, err = util.GetRequest(articleURL.URL)
 
 		doc, err = goquery.NewDocumentFromReader(resp.Body)
 		if err != nil {
@@ -192,18 +192,4 @@ func (c *CLI) execute() int {
 	}
 
 	return ExitCodeOK
-}
-
-func requestSite(URL string) (*http.Response, error) {
-	resp, err := http.Get(URL)
-	if err != nil {
-		return nil, err
-	}
-
-	statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
-	if !statusOK {
-		return resp, fmt.Errorf("status code error: %d %s", resp.StatusCode, resp.Status)
-	}
-
-	return resp, nil
 }
