@@ -33,6 +33,10 @@ type CrawlerSite struct {
 	ArticleUpdatedAt     string `db:"article_updated_at"`
 }
 
+type ArticleURL struct {
+	URL string `db:"url"`
+}
+
 type URLsRetrievedByCrawler struct {
 	URL []string
 }
@@ -126,10 +130,23 @@ func (c *CLI) execute() int {
 				return false
 			}
 
-			_, err = db.Exec("INSERT INTO `article_url` (`url`) VALUES (?)", aURL)
+			fmt.Println(aURL)
+
+			var countURL int
+			err = db.Get(&countURL, "SELECT count(*) FROM `article_url` WHERE `url` = ?", aURL)
 			if err != nil {
 				fmt.Println(err)
 				return false
+			}
+
+			fmt.Println(countURL == 0)
+
+			if countURL == 0 {
+				_, err = db.Exec("INSERT INTO `article_url` (`url`) VALUES (?)", aURL)
+				if err != nil {
+					fmt.Println(err)
+					return false
+				}
 			}
 
 			return true
