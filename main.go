@@ -26,20 +26,19 @@ var (
 )
 
 type CrawlerSite struct {
+	CrawlerSiteID        int    `db:"crawler_site_id"`
+	CrawlerSiteSettingID int    `db:"crawler_site_setting_id"`
 	Domain               string `db:"domain"`
 	URL                  string `db:"url"`
 	Block                string `db:"block"`
 	ArticleLinkFromBlock string `db:"article_link_from_block"`
 	Title                string `db:"title"`
+	Body                 string `db:"body"`
 	ArticleUpdatedAt     string `db:"article_updated_at"`
 }
 
 type ArticleURL struct {
 	URL string `db:"url"`
-}
-
-type URLsRetrievedByCrawler struct {
-	URL []string
 }
 
 func getEnv(key string, defaultValue string) string {
@@ -86,7 +85,16 @@ func (c *CLI) execute() int {
 	}(db)
 
 	var crawlerSite []CrawlerSite
-	query := "SELECT `cs`.`domain`, `cs`.`url`, `css`.`block`, `css`.`article_link_from_block`, `css`.`title`, `css`.`article_updated_at` FROM `crawler_site` as `cs` " +
+	query := "SELECT `cs`.`id` as `crawler_site_id`, " +
+		"`css`.`id` as `crawler_site_setting_id`, " +
+		"`cs`.`domain`, " +
+		"`cs`.`url`, " +
+		"`css`.`block`, " +
+		"`css`.`article_link_from_block`, " +
+		"`css`.`title`, " +
+		"`css`.`body`, " +
+		"`css`.`article_updated_at` " +
+		"FROM `crawler_site` as `cs` " +
 		"JOIN `crawler_site_setting` as `css` ON (`cs`.`id` = `css`.`crawler_site_id`) "
 	if err := db.Select(&crawlerSite, query); err != nil {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
@@ -126,7 +134,7 @@ func (c *CLI) execute() int {
 		s.Find(crawlerSite[1].ArticleLinkFromBlock).EachWithBreak(func(i int, s *goquery.Selection) bool {
 			aURL, exists := s.Attr("href")
 			if exists != true {
-				fmt.Println("not found href.")
+				_, _ = fmt.Fprintln(c.errStream, err.Error())
 				return false
 			}
 
@@ -138,16 +146,18 @@ func (c *CLI) execute() int {
 				// duplicate check
 				err = db.Get(&countURL, "SELECT count(*) FROM `article_url` WHERE `url` = ?", aURL)
 				if err != nil {
-					fmt.Println(err)
+					_, _ = fmt.Fprintln(c.errStream, err.Error())
 					return false
 				}
 
 				fmt.Println(countURL == 0)
 
 				if countURL == 0 {
-					_, err = db.Exec("INSERT INTO `article_url` (`url`) VALUES (?)", aURL)
+					_, err = db.Exec("INSERT INTO `article_url` "+
+						"(`crawler_site_id`, `crawler_site_setting_id`, `url`) VALUES (?, ?, ?)",
+						crawlerSite[1].CrawlerSiteID, crawlerSite[1].CrawlerSiteSettingID, aURL)
 					if err != nil {
-						fmt.Println(err)
+						_, _ = fmt.Fprintln(c.errStream, err.Error())
 						return false
 					}
 				}
@@ -158,6 +168,43 @@ func (c *CLI) execute() int {
 
 		return true
 	})
+
+	var articleURLs []ArticleURL
+	query = "SELECT `url` FROM `article_url` LIMIT 1"
+	err = db.Select(&articleURLs, query)
+	if err != nil {
+		_, _ = fmt.Fprintln(c.errStream, err.Error())
+		return ExitCodeFail
+	}
+
+	for _, articleURL := range articleURLs {
+		resp, err = http.Get(articleURL.URL)
+		statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
+		if !statusOK {
+			_, _ = fmt.Println("Non-OK HTTP status:", resp.StatusCode)
+			fmt.Println(resp)
+			return ExitCodeFail
+		}
+
+		doc, err = goquery.NewDocumentFromReader(resp.Body)
+		if err != nil {
+			_, _ = fmt.Fprintln(c.errStream, err.Error())
+			return ExitCodeFail
+		}
+
+		title := doc.Find(crawlerSite[1].Title).Text()
+		body := doc.Find(crawlerSite[1].Body).Text()
+
+		fmt.Println(title)
+		fmt.Println(body)
+	}
+
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			_, _ = fmt.Fprintln(c.errStream, err.Error())
+		}
+	}(resp.Body)
 
 	return ExitCodeOK
 }
