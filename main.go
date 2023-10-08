@@ -117,8 +117,6 @@ func (c *CLI) execute() int {
 		return ExitCodeFail
 	}
 
-	fmt.Println("get doc")
-
 	// pickup article urls
 	doc.Find(crawlerSite[1].Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
 		s.Find(crawlerSite[1].ArticleLinkFromBlock).EachWithBreak(func(i int, s *goquery.Selection) bool {
@@ -130,8 +128,6 @@ func (c *CLI) execute() int {
 
 			// fragment check
 			if !strings.Contains(aURL, "#") {
-				fmt.Println(aURL)
-
 				var countURL int
 				// duplicate check
 				err = db.Get(&countURL, "SELECT count(*) FROM `article_url` WHERE `url` = ?", aURL)
@@ -139,8 +135,6 @@ func (c *CLI) execute() int {
 					_, _ = fmt.Fprintln(c.errStream, err.Error())
 					return false
 				}
-
-				fmt.Println(countURL == 0)
 
 				if countURL == 0 {
 					_, err = db.Exec("INSERT INTO `article_url` "+
@@ -169,7 +163,7 @@ func (c *CLI) execute() int {
 
 	for _, articleURL := range articleURLs {
 		resp, err = requestSite(articleURL.URL)
-		time.Sleep(2)
+		time.Sleep(2 * time.Second)
 
 		doc, err = goquery.NewDocumentFromReader(resp.Body)
 		if err != nil {
