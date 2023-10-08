@@ -170,11 +170,15 @@ func (c *CLI) execute() int {
 			return ExitCodeFail
 		}
 
-		title := doc.Find(crawlerSite[1].Title).Text()
-		body := doc.Find(crawlerSite[1].Body).Text()
+		removed := doc.RemoveClass("#sidebar-wrapper")
+
+		title := removed.Find(crawlerSite[1].Title).Text()
+		body := removed.Find(crawlerSite[1].Body).Text()
+		articleUpdatedAt := doc.Find(crawlerSite[1].ArticleUpdatedAt).Text()
 
 		fmt.Println(title)
 		fmt.Println(body)
+		fmt.Println(articleUpdatedAt)
 
 		time.Sleep(1 * time.Second)
 	}
