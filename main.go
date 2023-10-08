@@ -101,23 +101,12 @@ func (c *CLI) execute() int {
 		return ExitCodeFail
 	}
 
-	resp, err := http.Get(crawlerSite[1].URL)
-	if err != nil {
-		_, _ = fmt.Fprintln(c.errStream, err.Error())
-		return ExitCodeFail
-	}
-
-	statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
-	if !statusOK {
-		_, _ = fmt.Println("Non-OK HTTP status:", resp.StatusCode)
-		fmt.Println(resp)
-		return ExitCodeFail
-	}
+	resp, err := requestSite(crawlerSite[1].URL)
 
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
-			_, _ = fmt.Fprintln(c.errStream, err.Error())
+			_ = fmt.Errorf("status code error: %d %s", resp.StatusCode, resp.Status)
 		}
 	}(resp.Body)
 
@@ -178,13 +167,7 @@ func (c *CLI) execute() int {
 	}
 
 	for _, articleURL := range articleURLs {
-		resp, err = http.Get(articleURL.URL)
-		statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
-		if !statusOK {
-			_, _ = fmt.Println("Non-OK HTTP status:", resp.StatusCode)
-			fmt.Println(resp)
-			return ExitCodeFail
-		}
+		resp, err = requestSite(articleURL.URL)
 
 		doc, err = goquery.NewDocumentFromReader(resp.Body)
 		if err != nil {
@@ -199,12 +182,19 @@ func (c *CLI) execute() int {
 		fmt.Println(body)
 	}
 
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			_, _ = fmt.Fprintln(c.errStream, err.Error())
-		}
-	}(resp.Body)
-
 	return ExitCodeOK
+}
+
+func requestSite(URL string) (*http.Response, error) {
+	resp, err := http.Get(URL)
+	if err != nil {
+		return nil, err
+	}
+
+	statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
+	if !statusOK {
+		return resp, fmt.Errorf("status code error: %d %s", resp.StatusCode, resp.Status)
+	}
+
+	return resp, nil
 }
