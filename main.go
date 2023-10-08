@@ -180,6 +180,14 @@ func (c *CLI) execute() int {
 		fmt.Println(body)
 		fmt.Println(articleUpdatedAt)
 
+		_, err = db.Exec("INSERT INTO `archive` "+
+			"(`crawler_site_id`, `url`, `title`, `body`, `article_updated_at`) VALUES (?, ?, ?, ?, ?)",
+			crawlerSite[1].CrawlerSiteID, articleURL.URL, title, body, articleUpdatedAt)
+		if err != nil {
+			_, _ = fmt.Fprintln(c.errStream, err.Error())
+			return ExitCodeFail
+		}
+
 		time.Sleep(1 * time.Second)
 	}
 
