@@ -163,7 +163,6 @@ func (c *CLI) execute() int {
 
 	for _, articleURL := range articleURLs {
 		resp, err = requestSite(articleURL.URL)
-		time.Sleep(2 * time.Second)
 
 		doc, err = goquery.NewDocumentFromReader(resp.Body)
 		if err != nil {
@@ -176,6 +175,8 @@ func (c *CLI) execute() int {
 
 		fmt.Println(title)
 		fmt.Println(body)
+
+		time.Sleep(1 * time.Second)
 	}
 
 	return ExitCodeOK
