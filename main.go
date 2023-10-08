@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 const (
@@ -101,23 +102,12 @@ func (c *CLI) execute() int {
 		return ExitCodeFail
 	}
 
-	resp, err := http.Get(crawlerSite[1].URL)
-	if err != nil {
-		_, _ = fmt.Fprintln(c.errStream, err.Error())
-		return ExitCodeFail
-	}
-
-	statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
-	if !statusOK {
-		_, _ = fmt.Println("Non-OK HTTP status:", resp.StatusCode)
-		fmt.Println(resp)
-		return ExitCodeFail
-	}
+	resp, err := requestSite(crawlerSite[1].URL)
 
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
-			_, _ = fmt.Fprintln(c.errStream, err.Error())
+			_ = fmt.Errorf("status code error: %d %s", resp.StatusCode, resp.Status)
 		}
 	}(resp.Body)
 
@@ -126,8 +116,6 @@ func (c *CLI) execute() int {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
 		return ExitCodeFail
 	}
-
-	fmt.Println("get doc")
 
 	// pickup article urls
 	doc.Find(crawlerSite[1].Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
@@ -140,8 +128,6 @@ func (c *CLI) execute() int {
 
 			// fragment check
 			if !strings.Contains(aURL, "#") {
-				fmt.Println(aURL)
-
 				var countURL int
 				// duplicate check
 				err = db.Get(&countURL, "SELECT count(*) FROM `article_url` WHERE `url` = ?", aURL)
@@ -149,8 +135,6 @@ func (c *CLI) execute() int {
 					_, _ = fmt.Fprintln(c.errStream, err.Error())
 					return false
 				}
-
-				fmt.Println(countURL == 0)
 
 				if countURL == 0 {
 					_, err = db.Exec("INSERT INTO `article_url` "+
@@ -178,13 +162,7 @@ func (c *CLI) execute() int {
 	}
 
 	for _, articleURL := range articleURLs {
-		resp, err = http.Get(articleURL.URL)
-		statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
-		if !statusOK {
-			_, _ = fmt.Println("Non-OK HTTP status:", resp.StatusCode)
-			fmt.Println(resp)
-			return ExitCodeFail
-		}
+		resp, err = requestSite(articleURL.URL)
 
 		doc, err = goquery.NewDocumentFromReader(resp.Body)
 		if err != nil {
@@ -192,19 +170,32 @@ func (c *CLI) execute() int {
 			return ExitCodeFail
 		}
 
-		title := doc.Find(crawlerSite[1].Title).Text()
-		body := doc.Find(crawlerSite[1].Body).Text()
+		removed := doc.RemoveClass("#sidebar-wrapper")
+
+		title := removed.Find(crawlerSite[1].Title).Text()
+		body := removed.Find(crawlerSite[1].Body).Text()
+		articleUpdatedAt := doc.Find(crawlerSite[1].ArticleUpdatedAt).Text()
 
 		fmt.Println(title)
 		fmt.Println(body)
+		fmt.Println(articleUpdatedAt)
+
+		time.Sleep(1 * time.Second)
 	}
 
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			_, _ = fmt.Fprintln(c.errStream, err.Error())
-		}
-	}(resp.Body)
-
 	return ExitCodeOK
+}
+
+func requestSite(URL string) (*http.Response, error) {
+	resp, err := http.Get(URL)
+	if err != nil {
+		return nil, err
+	}
+
+	statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
+	if !statusOK {
+		return resp, fmt.Errorf("status code error: %d %s", resp.StatusCode, resp.Status)
+	}
+
+	return resp, nil
 }
