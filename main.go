@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 const (
@@ -168,6 +169,7 @@ func (c *CLI) execute() int {
 
 	for _, articleURL := range articleURLs {
 		resp, err = requestSite(articleURL.URL)
+		time.Sleep(2)
 
 		doc, err = goquery.NewDocumentFromReader(resp.Body)
 		if err != nil {
