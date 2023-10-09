@@ -157,7 +157,7 @@ func (c *CLI) articleURLRetriever(crawlerSite []CrawlerSite) int {
 // Retrieve content such as article body and title.
 func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
 	var articleURLs []ArticleURL
-	query := "SELECT `id`, `url` FROM `article_url` LIMIT 1"
+	query := "SELECT `id`, `url` FROM `article_url` LIMIT 5"
 	err = db.Select(&articleURLs, query)
 	if err != nil {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
@@ -193,7 +193,7 @@ func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
 		}
 
 		fmt.Println("sleep")
-		time.Sleep(1 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 
 	return ExitCodeOK
