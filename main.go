@@ -102,21 +102,16 @@ func (c *CLI) execute() int {
 		return ExitCodeFail
 	}
 
-	resp, err := util.GetRequest(crawlerSite[1].URL)
+	c.articleURLRetriever(crawlerSite)
+	c.articleContentExtractor(crawlerSite)
 
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			_ = fmt.Errorf("status code error: %d %s", resp.StatusCode, resp.Status)
-		}
-	}(resp.Body)
+	return ExitCodeOK
+}
 
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		_, _ = fmt.Fprintln(c.errStream, err.Error())
-		return ExitCodeFail
-	}
-
+// Get url from the top page of the site.
+func (c *CLI) articleURLRetriever(crawlerSite []CrawlerSite) int {
+	doc, err := util.Scraping(crawlerSite[1].URL)
+	
 	// pickup article urls
 	doc.Find(crawlerSite[1].Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
 		s.Find(crawlerSite[1].ArticleLinkFromBlock).EachWithBreak(func(i int, s *goquery.Selection) bool {
@@ -153,8 +148,13 @@ func (c *CLI) execute() int {
 		return true
 	})
 
+	return ExitCodeOK
+}
+
+// Retrieve content such as article body and title.
+func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
 	var articleURLs []ArticleURL
-	query = "SELECT `url` FROM `article_url` LIMIT 1"
+	query := "SELECT `url` FROM `article_url` LIMIT 1"
 	err = db.Select(&articleURLs, query)
 	if err != nil {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
@@ -162,13 +162,7 @@ func (c *CLI) execute() int {
 	}
 
 	for _, articleURL := range articleURLs {
-		resp, err = util.GetRequest(articleURL.URL)
-
-		doc, err = goquery.NewDocumentFromReader(resp.Body)
-		if err != nil {
-			_, _ = fmt.Fprintln(c.errStream, err.Error())
-			return ExitCodeFail
-		}
+		doc, err := util.Scraping(articleURL.URL)
 
 		removed := doc.RemoveClass("#sidebar-wrapper")
 
