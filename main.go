@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/UserKazun/schaben/util"
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -22,8 +22,9 @@ type CLI struct {
 }
 
 var (
-	db  *sqlx.DB
-	err error
+	db      *sqlx.DB
+	hClient http.Client
+	err     error
 )
 
 type CrawlerSite struct {
@@ -66,6 +67,12 @@ func connectDB() (*sqlx.DB, error) {
 
 func NewCLI(outStream, errStream io.Writer) *CLI {
 	return &CLI{outStream: outStream, errStream: errStream}
+}
+
+func init() {
+	hClient = http.Client{
+		Timeout: 5 * time.Second,
+	}
 }
 
 func main() {
@@ -113,7 +120,7 @@ func (c *CLI) execute() int {
 
 // Get url from the top page of the site.
 func (c *CLI) articleURLRetriever(crawlerSite []CrawlerSite) int {
-	doc, err := util.Scraping(crawlerSite[1].URL)
+	doc, err := scraping(crawlerSite[1].URL)
 
 	// pickup article urls
 	doc.Find(crawlerSite[1].Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
@@ -165,7 +172,7 @@ func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
 	}
 
 	for _, articleURL := range articleURLs {
-		doc, err := util.Scraping(articleURL.URL)
+		doc, err := scraping(articleURL.URL)
 
 		// Remove unneeded classes.
 		removed := doc.RemoveClass(crawlerSite[1].RemoveClass)
@@ -197,4 +204,30 @@ func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
 	}
 
 	return ExitCodeOK
+}
+
+func scraping(URL string) (*goquery.Document, error) {
+	resp, err := hClient.Get(URL)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			_ = fmt.Errorf("status code error: %d %s", resp.StatusCode, resp.Status)
+		}
+	}(resp.Body)
+
+	statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
+	if !statusOK {
+		return nil, fmt.Errorf("status code error: %d %s", resp.StatusCode, resp.Status)
+	}
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return doc, nil
 }
