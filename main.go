@@ -40,6 +40,7 @@ type CrawlerSite struct {
 }
 
 type ArticleURL struct {
+	ID  int    `db:"id"`
 	URL string `db:"url"`
 }
 
@@ -156,7 +157,7 @@ func (c *CLI) articleURLRetriever(crawlerSite []CrawlerSite) int {
 // Retrieve content such as article body and title.
 func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
 	var articleURLs []ArticleURL
-	query := "SELECT `url` FROM `article_url` LIMIT 1"
+	query := "SELECT `id`, `url` FROM `article_url` LIMIT 1"
 	err = db.Select(&articleURLs, query)
 	if err != nil {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
@@ -180,6 +181,12 @@ func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
 		_, err = db.Exec("INSERT INTO `archive` "+
 			"(`crawler_site_id`, `url`, `title`, `body`, `article_updated_at`) VALUES (?, ?, ?, ?, ?)",
 			crawlerSite[1].CrawlerSiteID, articleURL.URL, title, body, articleUpdatedAt)
+		if err != nil {
+			_, _ = fmt.Fprintln(c.errStream, err.Error())
+			return ExitCodeFail
+		}
+
+		_, err = db.Exec("DELETE FROM `article_url` WHERE `id` = ?", articleURL.ID)
 		if err != nil {
 			_, _ = fmt.Fprintln(c.errStream, err.Error())
 			return ExitCodeFail
