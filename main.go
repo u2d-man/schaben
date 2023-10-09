@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/UserKazun/schaben/util"
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -35,6 +35,7 @@ type CrawlerSite struct {
 	ArticleLinkFromBlock string `db:"article_link_from_block"`
 	Title                string `db:"title"`
 	Body                 string `db:"body"`
+	RemoveClass          string `db:"remove_class"`
 	ArticleUpdatedAt     string `db:"article_updated_at"`
 }
 
@@ -95,6 +96,7 @@ func (c *CLI) execute() int {
 		"`css`.`article_link_from_block`, " +
 		"`css`.`title`, " +
 		"`css`.`body`, " +
+		"`css`.`remove_class`," +
 		"`css`.`article_updated_at` " +
 		"FROM `crawler_site` as `cs` " +
 		"JOIN `crawler_site_setting` as `css` ON (`cs`.`id` = `css`.`crawler_site_id`) "
@@ -103,20 +105,15 @@ func (c *CLI) execute() int {
 		return ExitCodeFail
 	}
 
-	resp, err := requestSite(crawlerSite[1].URL)
+	c.articleURLRetriever(crawlerSite)
+	c.articleContentExtractor(crawlerSite)
 
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			_ = fmt.Errorf("status code error: %d %s", resp.StatusCode, resp.Status)
-		}
-	}(resp.Body)
+	return ExitCodeOK
+}
 
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		_, _ = fmt.Fprintln(c.errStream, err.Error())
-		return ExitCodeFail
-	}
+// Get url from the top page of the site.
+func (c *CLI) articleURLRetriever(crawlerSite []CrawlerSite) int {
+	doc, err := util.Scraping(crawlerSite[1].URL)
 
 	// pickup article urls
 	doc.Find(crawlerSite[1].Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
@@ -154,12 +151,13 @@ func (c *CLI) execute() int {
 		return true
 	})
 
+	return ExitCodeOK
+}
+
+// Retrieve content such as article body and title.
+func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
 	var articleURLs []ArticleURL
-<<<<<<< Updated upstream
-	query = "SELECT `url` FROM `article_url` LIMIT 1"
-=======
 	query := "SELECT `id`, `url` FROM `article_url` LIMIT 1"
->>>>>>> Stashed changes
 	err = db.Select(&articleURLs, query)
 	if err != nil {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
@@ -167,15 +165,10 @@ func (c *CLI) execute() int {
 	}
 
 	for _, articleURL := range articleURLs {
-		resp, err = requestSite(articleURL.URL)
+		doc, err := util.Scraping(articleURL.URL)
 
-		doc, err = goquery.NewDocumentFromReader(resp.Body)
-		if err != nil {
-			_, _ = fmt.Fprintln(c.errStream, err.Error())
-			return ExitCodeFail
-		}
-
-		removed := doc.RemoveClass("#sidebar-wrapper")
+		// Remove unneeded classes.
+		removed := doc.RemoveClass(crawlerSite[1].RemoveClass)
 
 		title := removed.Find(crawlerSite[1].Title).Text()
 		body := removed.Find(crawlerSite[1].Body).Text()
@@ -193,8 +186,6 @@ func (c *CLI) execute() int {
 			return ExitCodeFail
 		}
 
-<<<<<<< Updated upstream
-=======
 		_, err = db.Exec("DELETE FROM `article_url` WHERE `id` = ?", articleURL.ID)
 		if err != nil {
 			_, _ = fmt.Fprintln(c.errStream, err.Error())
@@ -202,23 +193,8 @@ func (c *CLI) execute() int {
 		}
 
 		fmt.Println("sleep")
->>>>>>> Stashed changes
 		time.Sleep(1 * time.Second)
 	}
 
 	return ExitCodeOK
-}
-
-func requestSite(URL string) (*http.Response, error) {
-	resp, err := http.Get(URL)
-	if err != nil {
-		return nil, err
-	}
-
-	statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
-	if !statusOK {
-		return resp, fmt.Errorf("status code error: %d %s", resp.StatusCode, resp.Status)
-	}
-
-	return resp, nil
 }
