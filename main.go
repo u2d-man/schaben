@@ -39,6 +39,7 @@ type CrawlerSite struct {
 }
 
 type ArticleURL struct {
+	ID  int    `db:"id"`
 	URL string `db:"url"`
 }
 
@@ -154,7 +155,11 @@ func (c *CLI) execute() int {
 	})
 
 	var articleURLs []ArticleURL
+<<<<<<< Updated upstream
 	query = "SELECT `url` FROM `article_url` LIMIT 1"
+=======
+	query := "SELECT `id`, `url` FROM `article_url` LIMIT 1"
+>>>>>>> Stashed changes
 	err = db.Select(&articleURLs, query)
 	if err != nil {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
@@ -188,6 +193,16 @@ func (c *CLI) execute() int {
 			return ExitCodeFail
 		}
 
+<<<<<<< Updated upstream
+=======
+		_, err = db.Exec("DELETE FROM `article_url` WHERE `id` = ?", articleURL.ID)
+		if err != nil {
+			_, _ = fmt.Fprintln(c.errStream, err.Error())
+			return ExitCodeFail
+		}
+
+		fmt.Println("sleep")
+>>>>>>> Stashed changes
 		time.Sleep(1 * time.Second)
 	}
 
