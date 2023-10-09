@@ -35,6 +35,7 @@ type CrawlerSite struct {
 	ArticleLinkFromBlock string `db:"article_link_from_block"`
 	Title                string `db:"title"`
 	Body                 string `db:"body"`
+	RemoveClass          string `db:"remove_class"`
 	ArticleUpdatedAt     string `db:"article_updated_at"`
 }
 
@@ -94,6 +95,7 @@ func (c *CLI) execute() int {
 		"`css`.`article_link_from_block`, " +
 		"`css`.`title`, " +
 		"`css`.`body`, " +
+		"`css`.`remove_class`," +
 		"`css`.`article_updated_at` " +
 		"FROM `crawler_site` as `cs` " +
 		"JOIN `crawler_site_setting` as `css` ON (`cs`.`id` = `css`.`crawler_site_id`) "
@@ -111,7 +113,7 @@ func (c *CLI) execute() int {
 // Get url from the top page of the site.
 func (c *CLI) articleURLRetriever(crawlerSite []CrawlerSite) int {
 	doc, err := util.Scraping(crawlerSite[1].URL)
-	
+
 	// pickup article urls
 	doc.Find(crawlerSite[1].Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
 		s.Find(crawlerSite[1].ArticleLinkFromBlock).EachWithBreak(func(i int, s *goquery.Selection) bool {
@@ -164,7 +166,8 @@ func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
 	for _, articleURL := range articleURLs {
 		doc, err := util.Scraping(articleURL.URL)
 
-		removed := doc.RemoveClass("#sidebar-wrapper")
+		// Remove unneeded classes.
+		removed := doc.RemoveClass(crawlerSite[1].RemoveClass)
 
 		title := removed.Find(crawlerSite[1].Title).Text()
 		body := removed.Find(crawlerSite[1].Body).Text()
@@ -182,6 +185,7 @@ func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
 			return ExitCodeFail
 		}
 
+		fmt.Println("sleep")
 		time.Sleep(1 * time.Second)
 	}
 
