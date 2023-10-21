@@ -181,13 +181,14 @@ func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
 		body := removed.Find(crawlerSite[1].Body).Text()
 		articleUpdatedAt := doc.Find(crawlerSite[1].ArticleUpdatedAt).Text()
 
-		fmt.Println(title)
+		fmt.Println(articleURL.URL)
+		fmt.Println(strings.ReplaceAll(title, "\n", ""))
 		fmt.Println(body)
 		fmt.Println(articleUpdatedAt)
 
 		_, err = db.Exec("INSERT INTO `archive` "+
 			"(`crawler_site_id`, `url`, `title`, `body`, `article_updated_at`) VALUES (?, ?, ?, ?, ?)",
-			crawlerSite[1].CrawlerSiteID, articleURL.URL, title, body, articleUpdatedAt)
+			crawlerSite[1].CrawlerSiteID, articleURL.URL, strings.ReplaceAll(title, "\n", ""), body, articleUpdatedAt)
 		if err != nil {
 			_, _ = fmt.Fprintln(c.errStream, err.Error())
 			return ExitCodeFail
