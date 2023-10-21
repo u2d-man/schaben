@@ -1,9 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"io"
 	"net/http"
@@ -15,6 +15,7 @@ import (
 const (
 	ExitCodeOK   = 0
 	ExitCodeFail = 1
+	ArgsFilename = 1
 )
 
 type CLI struct {
@@ -27,42 +28,24 @@ var (
 	err     error
 )
 
+type Targets struct {
+	CrawlTarget CrawlerSite `json:"target"`
+}
+
 type CrawlerSite struct {
-	CrawlerSiteID        int    `db:"crawler_site_id"`
-	CrawlerSiteSettingID int    `db:"crawler_site_setting_id"`
-	Domain               string `db:"domain"`
-	URL                  string `db:"url"`
-	Block                string `db:"block"`
-	ArticleLinkFromBlock string `db:"article_link_from_block"`
-	Title                string `db:"title"`
-	Body                 string `db:"body"`
-	RemoveClass          string `db:"remove_class"`
-	ArticleUpdatedAt     string `db:"article_updated_at"`
+	Domain               string `json:"domain"`
+	URL                  string `json:"url"`
+	Block                string `json:"block"`
+	ArticleLinkFromBlock string `json:"article_link_from_block"`
+	Title                string `json:"title"`
+	Body                 string `json:"body"`
+	ArticleUpdatedAt     string `json:"article_updated_at"`
+	RemoveClass          string `json:"remove_class"`
 }
 
 type ArticleURL struct {
 	ID  int    `db:"id"`
 	URL string `db:"url"`
-}
-
-func getEnv(key string, defaultValue string) string {
-	if val, ok := os.LookupEnv(key); ok {
-		return val
-	}
-	return defaultValue
-}
-
-func connectDB() (*sqlx.DB, error) {
-	config := mysql.NewConfig()
-	config.Net = "tcp"
-	config.Addr = getEnv("DB_HOST", "127.0.0.1") + ":" + getEnv("DB_PORT", "3306")
-	config.User = getEnv("DB_USER", "davy_elton")
-	config.Passwd = getEnv("DB_PASSWORD", "password")
-	config.DBName = getEnv("DB_NAME", "schaben_local")
-	config.ParseTime = true
-	dsn := config.FormatDSN()
-
-	return sqlx.Open("mysql", dsn)
 }
 
 func NewCLI(outStream, errStream io.Writer) *CLI {
@@ -77,54 +60,67 @@ func init() {
 
 func main() {
 	cmd := NewCLI(os.Stdout, os.Stderr)
-	os.Exit(cmd.execute())
+	os.Exit(cmd.execute(os.Args))
 }
 
-func (c *CLI) execute() int {
-	db, err = connectDB()
+func (c *CLI) execute(args []string) int {
+	var filename string
+
+	if len(args) == ArgsFilename {
+		panic("specify the file name as the first argument.")
+	}
+	for i, v := range args {
+		if i == 1 {
+			filename = v
+		}
+	}
+
+	f, err := os.Open(filename)
 	if err != nil {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
 		return ExitCodeFail
 	}
 
-	defer func(db *sqlx.DB) {
-		err := db.Close()
-		if err != nil {
-			_, _ = fmt.Fprintln(c.errStream, err.Error())
-		}
-	}(db)
+	defer func(f *os.File) {
+		_ = f.Close()
+	}(f)
 
-	var crawlerSite []CrawlerSite
-	query := "SELECT `cs`.`id` as `crawler_site_id`, " +
-		"`css`.`id` as `crawler_site_setting_id`, " +
-		"`cs`.`domain`, " +
-		"`cs`.`url`, " +
-		"`css`.`block`, " +
-		"`css`.`article_link_from_block`, " +
-		"`css`.`title`, " +
-		"`css`.`body`, " +
-		"`css`.`remove_class`," +
-		"`css`.`article_updated_at` " +
-		"FROM `crawler_site` as `cs` " +
-		"JOIN `crawler_site_setting` as `css` ON (`cs`.`id` = `css`.`crawler_site_id`) "
-	if err := db.Select(&crawlerSite, query); err != nil {
+	b, err := io.ReadAll(f)
+	if err != nil {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
 		return ExitCodeFail
 	}
 
-	c.articleURLRetriever(crawlerSite)
-	c.articleContentExtractor(crawlerSite)
+	fmt.Println(string(b))
+
+	var targets Targets
+	if err = json.Unmarshal(b, &targets); err != nil {
+		_, _ = fmt.Fprintln(c.errStream, err.Error())
+		return ExitCodeFail
+	}
+
+	fmt.Println(targets)
+
+	crawlTarget := targets.CrawlTarget
+
+	if crawlTarget.Domain == "" {
+		_, _ = fmt.Fprintln(c.errStream, err.Error())
+		return ExitCodeFail
+	}
+
+	c.articleURLRetriever(crawlTarget)
+	c.articleContentExtractor(crawlTarget)
 
 	return ExitCodeOK
 }
 
 // Get url from the top page of the site.
-func (c *CLI) articleURLRetriever(crawlerSite []CrawlerSite) int {
-	doc, err := scraping(crawlerSite[1].URL)
+func (c *CLI) articleURLRetriever(crawlerSite CrawlerSite) int {
+	doc, err := scraping(crawlerSite.URL)
 
 	// pickup article urls
-	doc.Find(crawlerSite[1].Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
-		s.Find(crawlerSite[1].ArticleLinkFromBlock).EachWithBreak(func(i int, s *goquery.Selection) bool {
+	doc.Find(crawlerSite.Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
+		s.Find(crawlerSite.ArticleLinkFromBlock).EachWithBreak(func(i int, s *goquery.Selection) bool {
 			aURL, exists := s.Attr("href")
 			if exists != true {
 				_, _ = fmt.Fprintln(c.errStream, err.Error())
@@ -133,23 +129,7 @@ func (c *CLI) articleURLRetriever(crawlerSite []CrawlerSite) int {
 
 			// fragment check
 			if !strings.Contains(aURL, "#") {
-				var countURL int
-				// duplicate check
-				err = db.Get(&countURL, "SELECT count(*) FROM `article_url` WHERE `url` = ?", aURL)
-				if err != nil {
-					_, _ = fmt.Fprintln(c.errStream, err.Error())
-					return false
-				}
-
-				if countURL == 0 {
-					_, err = db.Exec("INSERT INTO `article_url` "+
-						"(`crawler_site_id`, `crawler_site_setting_id`, `url`) VALUES (?, ?, ?)",
-						crawlerSite[1].CrawlerSiteID, crawlerSite[1].CrawlerSiteSettingID, aURL)
-					if err != nil {
-						_, _ = fmt.Fprintln(c.errStream, err.Error())
-						return false
-					}
-				}
+				fmt.Println(aURL)
 			}
 
 			return true
@@ -162,43 +142,27 @@ func (c *CLI) articleURLRetriever(crawlerSite []CrawlerSite) int {
 }
 
 // Retrieve content such as article body and title.
-func (c *CLI) articleContentExtractor(crawlerSite []CrawlerSite) int {
+func (c *CLI) articleContentExtractor(crawlerSite CrawlerSite) int {
 	var articleURLs []ArticleURL
-	query := "SELECT `id`, `url` FROM `article_url` LIMIT 5"
-	err = db.Select(&articleURLs, query)
-	if err != nil {
-		_, _ = fmt.Fprintln(c.errStream, err.Error())
-		return ExitCodeFail
-	}
 
 	for _, articleURL := range articleURLs {
 		doc, err := scraping(articleURL.URL)
+		if err != nil {
+			_, _ = fmt.Fprintln(c.errStream, err.Error())
+			return ExitCodeFail
+		}
 
 		// Remove unneeded classes.
-		removed := doc.RemoveClass(crawlerSite[1].RemoveClass)
+		removed := doc.RemoveClass(crawlerSite.RemoveClass)
 
-		title := removed.Find(crawlerSite[1].Title).Text()
-		body := removed.Find(crawlerSite[1].Body).Text()
-		articleUpdatedAt := doc.Find(crawlerSite[1].ArticleUpdatedAt).Text()
+		title := removed.Find(crawlerSite.Title).Text()
+		body := removed.Find(crawlerSite.Body).Text()
+		articleUpdatedAt := doc.Find(crawlerSite.ArticleUpdatedAt).Text()
 
 		fmt.Println(articleURL.URL)
 		fmt.Println(strings.ReplaceAll(title, "\n", ""))
 		fmt.Println(body)
 		fmt.Println(articleUpdatedAt)
-
-		_, err = db.Exec("INSERT INTO `archive` "+
-			"(`crawler_site_id`, `url`, `title`, `body`, `article_updated_at`) VALUES (?, ?, ?, ?, ?)",
-			crawlerSite[1].CrawlerSiteID, articleURL.URL, strings.ReplaceAll(title, "\n", ""), body, articleUpdatedAt)
-		if err != nil {
-			_, _ = fmt.Fprintln(c.errStream, err.Error())
-			return ExitCodeFail
-		}
-
-		_, err = db.Exec("DELETE FROM `article_url` WHERE `id` = ?", articleURL.ID)
-		if err != nil {
-			_, _ = fmt.Fprintln(c.errStream, err.Error())
-			return ExitCodeFail
-		}
 
 		fmt.Println("sleep")
 		time.Sleep(2 * time.Second)
