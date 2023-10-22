@@ -186,7 +186,7 @@ func (c *CLI) articleContentExtractor(crawlerSite CrawlerSite) int {
 		fmt.Println(articleUpdatedAt)
 
 		fmt.Println("sleep")
-		time.Sleep(2 * time.Second)
+		time.Sleep(4 * time.Second)
 	}
 
 	return ExitCodeOK
