@@ -84,15 +84,11 @@ func (c *CLI) execute(args []string) int {
 		return ExitCodeFail
 	}
 
-	fmt.Println(string(b))
-
 	var targets Targets
 	if err = json.Unmarshal(b, &targets); err != nil {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
 		return ExitCodeFail
 	}
-
-	fmt.Println(targets)
 
 	crawlTarget := targets.CrawlTarget
 
@@ -101,13 +97,35 @@ func (c *CLI) execute(args []string) int {
 		return ExitCodeFail
 	}
 
+	// create a list of URL.
 	c.articleURLRetriever(crawlTarget)
-	c.articleContentExtractor(crawlTarget)
+
+	f, err = os.Open("urls.txt")
+	if err != nil {
+		_, _ = fmt.Fprintln(c.errStream, err.Error())
+		return ExitCodeFail
+	}
+
+	urls := make([]string, 0, 120)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		urls = append(urls, scanner.Text())
+	}
+
+	if err = scanner.Err(); err != nil {
+		_, _ = fmt.Fprintln(c.errStream, err.Error())
+		return ExitCodeFail
+	}
+
+	for _, url := range urls {
+		// retrieve titles and other content.
+		c.articleContentExtractor(url, crawlTarget)
+	}
 
 	return ExitCodeOK
 }
 
-// Get url from the top page of the site.
+// get url from the top page of the site.
 func (c *CLI) articleURLRetriever(crawlerSite CrawlerSite) int {
 	doc, err := scraping(crawlerSite.URL)
 
@@ -147,47 +165,28 @@ func (c *CLI) articleURLRetriever(crawlerSite CrawlerSite) int {
 	return ExitCodeOK
 }
 
-// Retrieve content such as article body and title.
-func (c *CLI) articleContentExtractor(crawlerSite CrawlerSite) int {
-	f, err := os.Open("urls.txt")
+// retrieve content such as article body and title.
+func (c *CLI) articleContentExtractor(url string, crawlerSite CrawlerSite) int {
+	doc, err := scraping(url)
 	if err != nil {
 		_, _ = fmt.Fprintln(c.errStream, err.Error())
 		return ExitCodeFail
 	}
 
-	urls := make([]string, 0, 120)
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		urls = append(urls, scanner.Text())
-	}
+	// Remove unneeded classes.
+	removed := doc.RemoveClass(crawlerSite.RemoveClass)
 
-	if err = scanner.Err(); err != nil {
-		_, _ = fmt.Fprintln(c.errStream, err.Error())
-		return ExitCodeFail
-	}
+	title := removed.Find(crawlerSite.Title).Text()
+	body := removed.Find(crawlerSite.Body).Text()
+	articleUpdatedAt := doc.Find(crawlerSite.ArticleUpdatedAt).Text()
 
-	for _, url := range urls {
-		doc, err := scraping(url)
-		if err != nil {
-			_, _ = fmt.Fprintln(c.errStream, err.Error())
-			return ExitCodeFail
-		}
+	fmt.Println(url)
+	fmt.Println(strings.ReplaceAll(title, "\n", ""))
+	fmt.Println(body)
+	fmt.Println(articleUpdatedAt)
 
-		// Remove unneeded classes.
-		removed := doc.RemoveClass(crawlerSite.RemoveClass)
-
-		title := removed.Find(crawlerSite.Title).Text()
-		body := removed.Find(crawlerSite.Body).Text()
-		articleUpdatedAt := doc.Find(crawlerSite.ArticleUpdatedAt).Text()
-
-		fmt.Println(url)
-		fmt.Println(strings.ReplaceAll(title, "\n", ""))
-		fmt.Println(body)
-		fmt.Println(articleUpdatedAt)
-
-		fmt.Println("sleep")
-		time.Sleep(4 * time.Second)
-	}
+	fmt.Println("sleep")
+	time.Sleep(4 * time.Second)
 
 	return ExitCodeOK
 }
