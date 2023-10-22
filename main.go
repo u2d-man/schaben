@@ -178,7 +178,7 @@ func (c *CLI) articleContentExtractor(url string, crawlerSite CrawlerSite) int {
 
 	title := removed.Find(crawlerSite.Title).Text()
 	body := removed.Find(crawlerSite.Body).Text()
-	articleUpdatedAt := doc.Find(crawlerSite.ArticleUpdatedAt).Text()
+	articleUpdatedAt := removed.Find(crawlerSite.ArticleUpdatedAt).Text()
 
 	fmt.Println(url)
 	fmt.Println(strings.ReplaceAll(title, "\n", ""))
