@@ -1,10 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/jmoiron/sqlx"
 	"io"
 	"net/http"
 	"os"
@@ -23,9 +23,7 @@ type CLI struct {
 }
 
 var (
-	db      *sqlx.DB
 	hClient http.Client
-	err     error
 )
 
 type Targets struct {
@@ -41,11 +39,6 @@ type CrawlerSite struct {
 	Body                 string `json:"body"`
 	ArticleUpdatedAt     string `json:"article_updated_at"`
 	RemoveClass          string `json:"remove_class"`
-}
-
-type ArticleURL struct {
-	ID  int    `db:"id"`
-	URL string `db:"url"`
 }
 
 func NewCLI(outStream, errStream io.Writer) *CLI {
@@ -118,6 +111,16 @@ func (c *CLI) execute(args []string) int {
 func (c *CLI) articleURLRetriever(crawlerSite CrawlerSite) int {
 	doc, err := scraping(crawlerSite.URL)
 
+	f, err := os.Create("urls.txt")
+	if err != nil {
+		_, _ = fmt.Fprintln(c.errStream, err.Error())
+		return ExitCodeFail
+	}
+
+	defer func(f *os.File) {
+		_ = f.Close()
+	}(f)
+
 	// pickup article urls
 	doc.Find(crawlerSite.Block).EachWithBreak(func(_ int, s *goquery.Selection) bool {
 		s.Find(crawlerSite.ArticleLinkFromBlock).EachWithBreak(func(i int, s *goquery.Selection) bool {
@@ -129,7 +132,10 @@ func (c *CLI) articleURLRetriever(crawlerSite CrawlerSite) int {
 
 			// fragment check
 			if !strings.Contains(aURL, "#") {
-				fmt.Println(aURL)
+				_, err := f.Write([]byte(aURL + "\n"))
+				if err != nil {
+					return false
+				}
 			}
 
 			return true
@@ -143,10 +149,25 @@ func (c *CLI) articleURLRetriever(crawlerSite CrawlerSite) int {
 
 // Retrieve content such as article body and title.
 func (c *CLI) articleContentExtractor(crawlerSite CrawlerSite) int {
-	var articleURLs []ArticleURL
+	f, err := os.Open("urls.txt")
+	if err != nil {
+		_, _ = fmt.Fprintln(c.errStream, err.Error())
+		return ExitCodeFail
+	}
 
-	for _, articleURL := range articleURLs {
-		doc, err := scraping(articleURL.URL)
+	urls := make([]string, 0, 120)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		urls = append(urls, scanner.Text())
+	}
+
+	if err = scanner.Err(); err != nil {
+		_, _ = fmt.Fprintln(c.errStream, err.Error())
+		return ExitCodeFail
+	}
+
+	for _, url := range urls {
+		doc, err := scraping(url)
 		if err != nil {
 			_, _ = fmt.Fprintln(c.errStream, err.Error())
 			return ExitCodeFail
@@ -159,7 +180,7 @@ func (c *CLI) articleContentExtractor(crawlerSite CrawlerSite) int {
 		body := removed.Find(crawlerSite.Body).Text()
 		articleUpdatedAt := doc.Find(crawlerSite.ArticleUpdatedAt).Text()
 
-		fmt.Println(articleURL.URL)
+		fmt.Println(url)
 		fmt.Println(strings.ReplaceAll(title, "\n", ""))
 		fmt.Println(body)
 		fmt.Println(articleUpdatedAt)
